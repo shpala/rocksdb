@@ -13,9 +13,9 @@
 #include "util/crc32c.h"
 
 #include <stdint.h>
-#ifdef __SSE4_2__
+#include <array>
+#include <bitset>
 #include <nmmintrin.h>
-#endif
 #include "util/coding.h"
 
 namespace rocksdb {
@@ -291,12 +291,10 @@ static inline uint32_t LE_LOAD32(const uint8_t *p) {
   return DecodeFixed32(reinterpret_cast<const char*>(p));
 }
 
-#ifdef __SSE4_2__
-#ifdef __LP64__
+#if defined(__LP64__) || defined(_M_X64)
 static inline uint64_t LE_LOAD64(const uint8_t *p) {
   return DecodeFixed64(reinterpret_cast<const char*>(p));
 }
-#endif
 #endif
 
 static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
@@ -315,20 +313,27 @@ static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
   table0_[c >> 24];
 }
 
+static inline void Slow_CRC32_Byte(uint64_t* l, uint8_t const **p) {
+  int c = (*l & 0xff) ^ **p;
+  *l = table0_[c] ^ (*l >> 8);
+  ++*p;
+}
+
 static inline void Fast_CRC32(uint64_t* l, uint8_t const **p) {
-#ifdef __SSE4_2__
-#ifdef __LP64__
+#if defined (_M_X64) || defined (__LP64__)
   *l = _mm_crc32_u64(*l, LE_LOAD64(*p));
   *p += 8;
 #else
-  *l = _mm_crc32_u32(static_cast<unsigned int>(*l), LE_LOAD32(*p));
+  *l = _mm_crc32_u32(*l, LE_LOAD32(*p));
   *p += 4;
-  *l = _mm_crc32_u32(static_cast<unsigned int>(*l), LE_LOAD32(*p));
+  *l = _mm_crc32_u32(*l, LE_LOAD32(*p));
   *p += 4;
 #endif
-#else
-  Slow_CRC32(l, p);
-#endif
+}
+
+static inline void Fast_CRC32_byte(uint64_t* l, uint8_t const **p) {
+  *l = _mm_crc32_u8(static_cast<unsigned int>(*l), **p);
+  ++*p;
 }
 
 template<void (*CRC32)(uint64_t*, uint8_t const**)>
@@ -350,24 +355,33 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
   // just past the end of the string.
   const uintptr_t pval = reinterpret_cast<uintptr_t>(p);
   const uint8_t* x = reinterpret_cast<const uint8_t*>(ALIGN(pval, 4));
-  if (x <= e) {
-    // Process bytes until finished or p is 16-byte aligned
-    while (p != x) {
-      STEP1;
+  if (CRC32 == Slow_CRC32)
+  {
+    if (x <= e) {
+      // Process bytes until finished or p is 16-byte aligned
+      while (p != x) {
+        STEP1;
+      }
     }
   }
-  // Process bytes 16 at a time
-  while ((e-p) >= 16) {
-    CRC32(&l, &p);
-    CRC32(&l, &p);
-  }
+
   // Process bytes 8 at a time
   while ((e-p) >= 8) {
     CRC32(&l, &p);
   }
-  // Process the last few bytes
-  while (p != e) {
-    STEP1;
+
+  if (CRC32 == Slow_CRC32)
+  {
+    // Process the last few bytes
+    while (p != e) {
+      STEP1;
+    }
+  }
+  else
+  {
+    while (p != e) {
+      Fast_CRC32_byte(&l, &p);
+    }
   }
 #undef STEP1
 #undef ALIGN
@@ -381,6 +395,11 @@ static bool isSSE42() {
   uint32_t d_;
   __asm__("cpuid" : "=c"(c_), "=d"(d_) : "a"(1) : "ebx");
   return c_ & (1U << 20);  // copied from CpuId.h in Folly.
+#elif defined(_WIN32)
+  std::array<int, 4> cpui = { 0 };
+  __cpuid(cpui.data(), 1);
+  std::bitset<32> ecx_ = cpui[2];
+  return ecx_[20];
 #else
   return false;
 #endif
@@ -393,11 +412,7 @@ static inline Function Choose_Extend() {
 }
 
 bool IsFastCrc32Supported() {
-#ifdef __SSE4_2__
   return isSSE42();
-#else
-  return false;
-#endif
 }
 
 Function ChosenExtend = Choose_Extend();

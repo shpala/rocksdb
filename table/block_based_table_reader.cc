@@ -589,7 +589,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
 
       if (s.ok()) {
         // Hack: Call GetFilter() to implicitly add filter to the block_cache
-        auto filter_entry = new_table->GetFilter();
+        auto filter_entry = new_table->GetFilter(ReadOptions(), false);
         filter_entry.Release(table_options.block_cache.get());
       }
     } else {
@@ -604,7 +604,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
 
         // Set filter block
         if (rep->filter_policy) {
-          rep->filter.reset(ReadFilter(rep, nullptr));
+          rep->filter.reset(ReadFilter(ReadOptions(), rep, nullptr));
         }
       } else {
         delete index_reader;
@@ -810,14 +810,14 @@ Status BlockBasedTable::PutDataBlockToCache(
   return s;
 }
 
-FilterBlockReader* BlockBasedTable::ReadFilter(Rep* rep, size_t* filter_size) {
+FilterBlockReader* BlockBasedTable::ReadFilter(const ReadOptions& read_options, Rep* rep, size_t* filter_size) {
   // TODO: We might want to unify with ReadBlockFromFile() if we start
   // requiring checksum verification in Table::Open.
   if (rep->filter_type == Rep::FilterType::kNoFilter) {
     return nullptr;
   }
   BlockContents block;
-  if (!ReadBlockContents(rep->file.get(), rep->footer, ReadOptions(),
+  if (!ReadBlockContents(rep->file.get(), rep->footer, read_options,
                          rep->filter_handle, &block, rep->ioptions.env,
                          false).ok()) {
     // Error reading the block
@@ -851,6 +851,7 @@ FilterBlockReader* BlockBasedTable::ReadFilter(Rep* rep, size_t* filter_size) {
 }
 
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
+                                                          const ReadOptions& read_options,
                                                           bool no_io) const {
   // If cache_index_and_filter_blocks is false, filter should be pre-populated.
   // We will return rep_->filter anyway. rep_->filter can be nullptr if filter
@@ -888,7 +889,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     return CachableEntry<FilterBlockReader>();
   } else {
     size_t filter_size = 0;
-    filter = ReadFilter(rep_, &filter_size);
+    filter = ReadFilter(read_options, rep_, &filter_size);
     if (filter != nullptr) {
       assert(filter_size > 0);
       cache_handle = block_cache->Insert(key, filter, filter_size,
@@ -1138,7 +1139,7 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
   no_io_read_options.read_tier = kBlockCacheTier;
 
   // First, try check with full filter
-  auto filter_entry = GetFilter(true /* no io */);
+  auto filter_entry = GetFilter(ReadOptions(), true /* no io */);
   FilterBlockReader* filter = filter_entry.value;
   if (filter != nullptr && !filter->IsBlockBased()) {
     may_match = filter->PrefixMayMatch(prefix);
@@ -1223,7 +1224,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
   Status s;
   CachableEntry<FilterBlockReader> filter_entry;
   if (!skip_filters) {
-    filter_entry = GetFilter(read_options.read_tier == kBlockCacheTier);
+    filter_entry = GetFilter(read_options, (read_options.read_tier == kBlockCacheTier));
   }
   FilterBlockReader* filter = filter_entry.value;
 
