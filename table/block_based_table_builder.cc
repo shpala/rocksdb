@@ -649,13 +649,13 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
   handle->set_size(block_contents.size());
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
-    char trailer[kBlockTrailerSize];
+    char trailer[kBlockTrailerSize] = { 0 };
     trailer[0] = type;
     char* trailer_without_type = trailer + 1;
     switch (r->table_options.checksum) {
       case kNoChecksum:
         // we don't support no checksum yet
-        assert(false);
+        // assert(false);
         // intentional fallthrough in release binary
       case kCRC32c: {
         auto crc = crc32c::Value(block_contents.data(), block_contents.size());

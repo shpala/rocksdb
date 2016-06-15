@@ -106,10 +106,10 @@ endif ()
 #
 # Edit these 4 lines to define paths to LZ4
 #
-set(LZ4_HOME $ENV{THIRDPARTY_HOME}/LZ4.Library)
-set(LZ4_INCLUDE ${LZ4_HOME}/inc/include)
-set(LZ4_LIB_DEBUG ${LZ4_HOME}/bin/debug/amd64/lz4.lib)
-set(LZ4_LIB_RELEASE ${LZ4_HOME}/bin/retail/amd64/lz4.lib)
+set(LZ4_HOME $ENV{THIRDPARTY_HOME}/lz4)
+set(LZ4_INCLUDE ${LZ4_HOME}/lib)
+set(LZ4_LIB_DEBUG ${LZ4_HOME}/visual/2012/x64/Debug/lz4.lib)
+set(LZ4_LIB_RELEASE ${LZ4_HOME}/visual/2012/x64/Release/lz4.lib)
 
 #
 # Don't touch these lines

@@ -143,7 +143,7 @@ class BlockBasedTable : public TableReader {
   // For the following two functions:
   // if `no_io == true`, we will not try to read filter/index from sst file
   // were they not present in cache yet.
-  CachableEntry<FilterBlockReader> GetFilter(bool no_io = false) const;
+  CachableEntry<FilterBlockReader> GetFilter(const ReadOptions& read_options, bool no_io = false) const;
 
   // Get the iterator from the index reader.
   // If input_iter is not set, return new Iterator
@@ -205,7 +205,7 @@ class BlockBasedTable : public TableReader {
                               std::unique_ptr<InternalIterator>* iter);
 
   // Create the filter from the filter block.
-  static FilterBlockReader* ReadFilter(Rep* rep, size_t* filter_size = nullptr);
+  static FilterBlockReader* ReadFilter(const ReadOptions& read_options, Rep* rep, size_t* filter_size = nullptr);
 
   static void SetupCacheKeyPrefix(Rep* rep);
 
