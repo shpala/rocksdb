@@ -12,7 +12,7 @@
 #define __STDC_FORMAT_MACROS
 #endif
 #include <stdint.h>
-#ifdef OS_SOLARIS
+#if defined(OS_SOLARIS) || defined(__MSYS__)
 #include <alloca.h>
 #endif
 
